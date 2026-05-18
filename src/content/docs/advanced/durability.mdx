@@ -16,7 +16,6 @@ This page explains the mechanisms that make that true: atomic claiming,
 fencing (claim) tokens, heartbeats and the reaper, the database clock, the
 two-phase advancement commit, and the manual `revive!` escape hatch.
 
-{: .note }
 Durability concepts span several database tables. If a term is unfamiliar,
 see the [Lexicon](lexicon.html) and the data model diagram first.
 
@@ -66,7 +65,6 @@ In both strategies the winning worker stamps its `process_id` onto both the
 `availability` and the `execution` row. That `process_id` is the basis for the
 commit guard described [below](#the-execution-commit-guard).
 
-{: .note }
 Candidate selection uses the [database clock](#the-database-clock) for the
 `started_at <= now` comparison, so a retry or delayed execution does not become
 claimable until its scheduled time, regardless of clock skew between hosts.
@@ -287,7 +285,6 @@ run. See [Error Handling](error-handling.html) for halting and `on_halt`.
 | `pipeline_advancer.max_retry` | n/a | Advancement retry budget before the branch halts (`advancer_retries_exhausted`) |
 | `*.shutdown_timeout` | 20–30s | Grace period for in-flight work on a clean shutdown (see [Signal Handling](signal-handling.html)) |
 
-{: .note }
 Set `supervisor.polling_timeout` comfortably below `REAP_THRESHOLD` so a
 healthy process always heartbeats several times within one reap window. The
 process supervisor intentionally uses a slightly tighter threshold
