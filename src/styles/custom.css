@@ -1,0 +1,26 @@
+:root {
+  /* backgrounds */
+  --sl-color-bg: #201f23;
+  --sl-color-bg-nav: #27262b;
+  --sl-color-bg-sidebar: #27262b;
+  --sl-color-bg-inline-code: #27262b;
+
+  /* text */
+  --sl-color-white: #f5f6fa;        /* headings / highest-contrast text */
+  --sl-color-text: #e6e1e8;         /* body text */
+  --sl-color-gray-2: #e6e1e8;
+  --sl-color-gray-3: #e6e1e8;
+
+  /* borders / dividers */
+  --sl-color-hairline: #44434d;
+  --sl-color-hairline-light: #44434d;
+  --sl-color-hairline-shade: #44434d;
+  --sl-color-gray-5: #44434d;
+  --sl-color-gray-6: #44434d;
+
+  /* links / accent */
+  --sl-color-text-accent: #2c84fa;
+  --sl-color-accent: #2c84fa;
+  --sl-color-accent-high: #2c84fa;
+  --sl-color-accent-low: #201f23;
+}

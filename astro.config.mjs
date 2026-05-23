@@ -48,6 +48,9 @@ export default defineConfig({
           items: [{ autogenerate: { directory: 'management' } }],
         },
       ],
+      customCss: [
+        './src/styles/custom.css',
+      ],
     }),
   ],
 });
