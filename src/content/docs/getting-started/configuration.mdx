@@ -272,6 +272,18 @@ default: &default
     polling_timeout: 5 # seconds
 ```
 
+## `supervisor.reaper_timeout`
+
+Configures how long (in seconds) a child process's heartbeat can go without being updated before the supervisor considers the process unhealthy and reaps its resources. When a process is reaped, any in-progress pipeline advancements and job executions it claimed are marked as crashed so they can be picked up again. This timeout should be longer than `supervisor.polling_timeout` to give heartbeats time to register between checks. Realistically, this value should never be under 60 seconds.
+
+**Default:** 300 (seconds)
+
+```yaml
+default: &default
+  supervisor:
+    reaper_timeout: 360 # seconds
+```
+
 ## `supervisor.shutdown_timeout`
 
 Sets the maximum time (in seconds) to wait for child processes to shut down gracefully. This value should be larger than all other shutdown timeout configurations to ensure proper cascading. If the timeout is exceeded, child processes (pipeline advancer and job worker) receive a `SIGKILL` signal and terminate immediately. Be sure to set this value less than the max timeout your cloud provider may have. For example, Heroku waits 30 seconds before sending SIGKILL to processes on the dynos.
