@@ -28,7 +28,8 @@ work, and *atomically commit* the result, with each claim and commit guarded so 
 exactly one process can win, and so that a process which fell behind can never
 overwrite the winner. Any row left claimed by a process that stopped
 heartbeating is swept up by the **reaper** and re-made available. The net
-effect is **at-least-once execution** of every step with no lost work.
+effect is **at-least-once execution** of every step with no lost work, and
+**exactly-once advancement** from one step to the next.
 
 ## Atomic claiming
 
