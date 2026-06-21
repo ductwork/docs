@@ -58,6 +58,33 @@ default: &default
 
 **Important:** Scale your Rails connection pool size to match the number of threads to ensure adequate database connections.
 
+## `job_worker.max_crash`
+
+Sets the maximum number of times a step's job can be retried after a crash before marking it as an error and halting the pipeline. Unlike [`job_worker.max_retry`](#job_workermax_retry), which governs retries when a job *raises an error*, this limit governs *crashes* — out-of-memory kills, parent process crashes, other OS-level crashes, thread crashes, and hard deploys that kill threads and processes.
+
+The first 3 crashes are retried immediately with no back-off. After that, a tail back-off is applied between subsequent attempts before the job, and therefore the step and pipeline, is finally failed.
+
+**Default:** 10
+
+```yaml
+default: &default
+  job_worker:
+    max_crash: 10
+```
+
+You can also set pipline and step-level max crash configuration. When using this syntax you can still set defaults at the library and pipeline-level with the `max_crash.default` and `max_crash.MyPipelineA.default` keys.
+
+```yaml
+default: &default
+  job_worker:
+    max_crash:
+      default: 10
+      MyPipelineA:
+        default: 15
+        MyStep1: 5
+      MyPipelineB: 20
+```
+
 ## `job_worker.max_retry`
 
 Sets the maximum number of times a step's job can be retried before marking it as an error and halting the pipeline.
