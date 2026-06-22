@@ -185,6 +185,37 @@ default: &default
 
  **NOTE**: This will only change the logger level for the running `bin/ductwork` process.
 
+## `pipeline_advancer.count`
+
+Sets the number of threads created for advancing pipelines. You can scale this for high-throughput environments where pipeline advancement becomes a bottleneck.
+
+Advancer bottlenecks are most common with:
+
+- Large worker pools that churn through jobs quickly
+- Pipelines with many fast steps (sub-second execution times)
+- Burst traffic patterns that create sudden pipeline backlogs
+
+**Default:** 3 (threads)
+
+```yaml
+default: &default
+  pipeline_advancer:
+    count: 5
+```
+
+You can also set per-pipeline thread counts for fine-grained control. Pipelines without explicit configuration inherit the `default` value.
+
+```yaml
+default: &default
+  pipeline_advancer:
+    count:
+      default: 7
+      MyPipelineA: 5
+      MyPipelineB: 2
+```
+
+> ⚠️ **Caution:** Over-provisioning threads can increase database load and degrade performance. Start conservative and scale based on observed metrics.
+
 ## `pipeline_advancer.polling_timeout`
 
 Configures how long (in seconds) the pipeline advancer process sleeps when no pipelines need advancing. The process queries for pipelines whose last step is completed and advances them if found.
