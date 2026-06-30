@@ -1,0 +1,139 @@
+---
+title: Lazy Payloads
+sidebar:
+  order: 45
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="note">This feature requires [Ductwork Pro](https://getductwork.io/#pricing).</Aside>
+
+The fan-out and fan-in transitions, [`expand`](/docs/getting-started/defining-pipelines/) and [`collapse`](/docs/getting-started/defining-pipelines/), pass collections between steps. For modest collections, returning an ordinary array from your `expand` step and receiving an ordinary array in your `collapse` step works fine. But when a collection holds hundreds of thousands (or millions) of elements, materializing the whole thing in memory is a problem: the `expand` step has to build one giant array before any payload is written, and the `collapse` step has to load every sibling value at once just to begin its work.
+
+Ductwork Pro provides two **lazy payload** wrappers that stream these collections in bounded batches instead of holding them all in memory:
+
+- **`LazyOutputPayload`**: returned from an `expand` step, it streams the fan-out collection straight out of the database in batches
+- **`LazyInputPayload`**: handed to a `collapse` step, it streams the gathered sibling values back in batches
+
+Both let a single large fan-out/fan-in run with flat, bounded memory regardless of how many elements are involved.
+
+---
+
+## Why lazy payloads?
+
+Passing a very large collection by value runs into the same ceiling on both ends of the fan:
+
+- **Memory pressure**: an `expand` step that returns a million-element array builds that array in the job process before a single payload is written; a `collapse` step that receives a million-element array loads every value before its `execute` even begins
+- **Wasted materialization**: if the source of the collection already lives in your database (an ActiveRecord relation), loading it into Ruby objects only to re-serialize it into payloads is pure overhead
+
+Lazy payloads remove this ceiling. The `expand` side streams rows out of a relation a batch at a time, and the `collapse` side streams payloads back a batch at a time, so neither end ever holds the full collection at once.
+
+<Aside type="tip">Lazy payloads pair naturally with [Interruptible Advancement](/docs/pro/interruptible-advancement/), which keeps the *materialization* of expanded steps bounded and recoverable. Lazy payloads keep the *collection itself* out of memory on the way in and out. Together they make million-element fan-outs a first-class pattern.</Aside>
+
+---
+
+## Streaming a fan-out with `LazyOutputPayload`
+
+When an `expand` step's work is driven by a database query, return a `Ductwork::Pro::LazyOutputPayload` instead of an array. You construct it with an ActiveRecord relation and one or more column names to serialize. Ductwork streams the relation in batches, plucking only the columns you name (it never instantiates the AR records) and writes one payload (one expanded step) per row.
+
+```ruby
+class QueryUsersRequiringEnrichment < Ductwork::Step
+  def initialize(days_outdated)
+    @days_outdated = days_outdated
+  end
+
+  def execute
+    relation = User.where("data_last_refreshed_at < ?", @days_outdated.days.ago)
+
+    # Stream just the `id` column out of the database, one batch at a time,
+    # instead of loading every matching User into memory.
+    Ductwork::Pro::LazyOutputPayload.new(relation, :id)
+  end
+end
+```
+
+The column selection determines the shape of each expanded step's input:
+
+- **One column** yields scalars, so each expanded step receives that single value
+- **Multiple columns** yield arrays, so each expanded step receives an array of those column values, in the order you listed them
+
+```ruby
+# Each LoadUserData step receives a single id
+Ductwork::Pro::LazyOutputPayload.new(relation, :id)
+
+# Each LoadUserData step receives [id, email]
+Ductwork::Pro::LazyOutputPayload.new(relation, :id, :email)
+```
+
+Your pipeline definition is unchanged; the same `expand` transition consumes the lazy payload:
+
+```ruby
+class EnrichAllUsersDataPipeline < Ductwork::Pipeline
+  define do |pipeline|
+    pipeline.start(QueryUsersRequiringEnrichment)
+            .expand(to: LoadUserData)
+  end
+end
+```
+
+### Rules
+
+- **`expand` only.** A `LazyOutputPayload` is only meaningful for a fan-out. Returning one from any other transition raises `Ductwork::Pro::Execution::InvalidOutputPayloadError`, surfaced as a normal job error.
+- **Columns are required and must exist.** Constructing one with no columns raises `ArgumentError`; naming a column the relation doesn't have raises `LazyOutputPayload::InvalidColumnError`.
+- **Values must be JSON-serializable**, like any other payload.
+
+---
+
+## Streaming a fan-in with `LazyInputPayload`
+
+The `collapse` transition is the inverse of `expand`: it gathers every expanded sibling's output back into a single step. Because that collection can be just as large as the fan-out that produced it, a `collapse` step receives its input as a `Ductwork::Pro::LazyInputPayload` rather than a materialized array.
+
+`LazyInputPayload` is an `Enumerable` that streams the sibling values one batch at a time, parsing payloads as it goes and never holding them all at once. Iterate it like any collection:
+
+```ruby
+class ReportUserEnrichmentSuccess < Ductwork::Step
+  def initialize(results)
+    @results = results # a Ductwork::Pro::LazyInputPayload
+  end
+
+  def execute
+    succeeded = 0
+
+    # Streams sibling values in batches; the full collection is never
+    # held in memory at once.
+    @results.each do |result|
+      succeeded += 1 if result["status"] == "ok"
+    end
+
+    { total: @results.count, succeeded: succeeded }
+  end
+end
+```
+
+Because it's `Enumerable`, the usual methods (`map`, `sum`, `each_slice`, and so on) all work and all stream. Just avoid anything that forces the whole collection back into memory (`to_a`, a bare `map` whose result you keep) when the fan-in is genuinely large, since that would defeat the purpose.
+
+`#count` (aliased as `#size`) is answered with a SQL `COUNT`, so you can size the fan-in without triggering a full load.
+
+```ruby
+class EnrichAllUsersDataPipeline < Ductwork::Pipeline
+  define do |pipeline|
+    pipeline.start(QueryUsersRequiringEnrichment)
+            .expand(to: LoadUserData)
+            .collapse(into: ReportUserEnrichmentSuccess)
+  end
+end
+```
+
+<Aside type="note">A `LazyInputPayload` is handed to `collapse` steps automatically, so you don't construct it yourself. The bounded [`combine`](/docs/getting-started/defining-pipelines/) fan-in, by contrast, is statically bounded and still receives an ordinary materialized array.</Aside>
+
+---
+
+## Configuration
+
+There's nothing to configure. Both wrappers batch internally with no tuning required. Use `LazyOutputPayload` whenever your fan-out is backed by a relation; `LazyInputPayload` is delivered to every `collapse` step on its own.
+
+---
+
+## Ordering
+
+Within a fan-in, `LazyInputPayload` streams values in insertion order (by the payload's UUID v7 `id`), which is the order the expanded siblings committed their outputs. If your `collapse` logic depends on a specific ordering, sort within the step rather than relying on the stream order matching the original fan-out order.
