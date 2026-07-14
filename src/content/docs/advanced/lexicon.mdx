@@ -6,6 +6,10 @@ sidebar:
 
 This page defines the core concepts and components. Understanding these terms will hopefully help you properly design and scale your pipelines.
 
+## Workflow vs. Pipeline
+
+Ductwork uses the terms **workflow** and **pipeline** interchangeably. Do they actually have different meanings? Maybe? Pipelines tend to be more linear and workflows imply orchestration or have multiple branches, but in actuality the definitions are squishy and overlap.
+
 ## Pipeline
 
 A **pipeline** is a complete workflow definition consisting of steps and the transitions between them. Pipelines are represented as Ruby classes that inherit from `Ductwork::Pipeline` and live in `app/pipelines`.
