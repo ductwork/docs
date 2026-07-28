@@ -112,7 +112,9 @@ default: &default
 
 ## `job_worker.polling_timeout`
 
-Configures how long (in seconds) a job worker thread sleeps when no jobs are available. This prevents excessive database queries while waiting for work.
+Configures the *average* time (in seconds) a job worker thread sleeps when it is idle — that is, when it queried for claimable job IDs and none were returned. This prevents excessive database queries while waiting for work.
+
+The configured value is not used verbatim. Jitter of +/- 25% is applied to each sleep, so a value of `1` results in individual sleeps between 0.75 and 1.25 seconds. This spreads out polling across threads and processes to avoid a thundering herd hammering the database in lockstep.
 
 **Default:** 1 (second)
 
@@ -218,7 +220,9 @@ default: &default
 
 ## `pipeline_advancer.polling_timeout`
 
-Configures how long (in seconds) the pipeline advancer process sleeps when no pipelines need advancing. The process queries for pipelines whose last step is completed and advances them if found.
+Configures the *average* time (in seconds) a pipeline advancer thread sleeps when it is idle — that is, when it queried for claimable pipeline IDs and none were returned. The advancer queries for pipelines whose last step is completed and advances them if found.
+
+The configured value is not used verbatim. Jitter of +/- 25% is applied to each sleep, so a value of `1` results in individual sleeps between 0.75 and 1.25 seconds. This spreads out polling across threads and processes to avoid a thundering herd hammering the database in lockstep.
 
 **Default:** 1 (second)
 
