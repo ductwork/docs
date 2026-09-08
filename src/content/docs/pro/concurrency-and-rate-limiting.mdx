@@ -239,25 +239,3 @@ If you remove both at once, work already stamped with the key is not stranded, b
 **Limits + Timeouts:** A timed-out job's execution is completed, so its concurrency slot is released immediately. Its retry, if any, spends another rate token.
 
 **Limits + Interruptible Advancement:** A large `expand` onto a limited step works exactly as you'd hope. Millions of expanded steps are materialized in batches, and the limit meters how fast workers pick them up.
-
----
-
-## Monitoring
-
-If you've configured [Metrics](/docs/pro/metrics/), every limit decision is reported:
-
-| Metric | Type | Tags | Description |
-|--------|------|------|-------------|
-| `limit.admitted` | count | `limit_key` | A keyed claim passed the concurrency and rate checks |
-| `limit.refused` | count | `limit_key`, `reason` | A keyed claim was refused under the lock. `reason` is `concurrency` or `rate` |
-| `limit.saturated` | count | `limit_key`, `pipeline` | A key was skipped at poll time because it was at its concurrency ceiling |
-| `limit.in_flight` | gauge | `limit_key` | Running jobs for the key, as counted under the lock |
-| `limit.tokens` | gauge | `limit_key`, `period` | Tokens in a bucket after refill or spend |
-| `limit.blocked_for` | timer | `limit_key` | How long (ms) a rate-blocked key was suppressed for |
-| `limit.unlimited` | count | `limit_key`, `reason` | A keyed claim was admitted without enforcement. `reason` is `no_config` (retired key) or `no_header` |
-| `limit.fallthrough` | count | `pipeline` | A keyed claim lost a race after the poll and the worker took unkeyed work instead |
-| `limit.starved` | count | `pipeline` | Work was pending but no lane was eligible this poll |
-
-A steady stream of `limit.refused` with `reason: concurrency` means the key is the bottleneck, and the fix is a bigger allowance from the vendor or fewer callers. A high `limit.saturated` rate with low `limit.refused` is healthy: workers are correctly skipping a full key at poll time rather than contending for its lock.
-
-At debug log level, workers also log `"No eligible lane to claim from"` when everything pending is blocked, and `"Keyed lane refused after snapshot, falling through to unkeyed lane"` on a fallthrough.
