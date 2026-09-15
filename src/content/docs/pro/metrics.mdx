@@ -8,55 +8,26 @@ import { Aside } from '@astrojs/starlight/components';
 
 <Aside type="note">This feature requires [Ductwork Pro](https://getductwork.io/#pricing).</Aside>
 
-Ductwork Pro can report internal events to a StatsD-compatible metrics backend, giving you visibility into pipeline and job performance in real time.
-
----
-
-## Why instrument Ductwork?
-
-Metrics help you answer operational questions:
-
-- **Throughput** — How many pipelines are running? How many jobs are being processed?
-- **Performance** — How long do pipelines and jobs take? Are there slowdowns?
-- **Reliability** — How often do pipelines halt? Are timeouts firing frequently?
-- **Capacity planning** — Is your worker pool keeping up with demand?
-
-Combined with dashboards and alerting, these metrics form the foundation of production observability for your background processing.
-
----
-
-## Available metrics
-
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `pipeline.triggered` | count | Pipeline execution started |
-| `pipeline.completed` | count | Pipeline finished successfully |
-| `pipeline.halted` | count | Pipeline entered halted state (timeout, error, or manual halt) |
-| `pipeline.runtime` | timer | Total pipeline duration from start to completion (ms) |
-| `job.enqueued` | count | Job added to the queue |
-| `job.completed` | count | Job finished—includes success, error, and timeout outcomes |
-| `job.runtime` | timer | Job execution duration (ms) |
-
----
+Ductwork Pro can report what it's doing to a StatsD client. It emits counters when pipelines and jobs start and finish, and timers for how long they took. That's usually enough to build a dashboard and a couple of alerts without instrumenting your steps yourself.
 
 ## Configuration
 
-Assign a StatsD client to `Ductwork.statsd`. This must be set directly on the module since it accepts an object rather than a configuration value.
+Hand Ductwork a lambda that builds your StatsD client. It's called once, lazily, the first time a metric is emitted:
 
 ```ruby
+# config/initializers/ductwork.rb
 require "datadog/statsd"
 
 Ductwork.statsd = -> { Datadog::Statsd.new("localhost", 8125) }
 ```
 
-The lambda ensures lazy initialization—the client is created when first needed rather than at boot time.
+Setting `Ductwork.statsd` to anything other than a `Proc` raises an `ArgumentError`. If you never set it, metrics go to a null client and nothing is sent. Put this in an initializer so it's in place before any Ductwork process starts doing work, since the client is memoized the first time it's used.
 
-Any StatsD-compatible client works, but we recommend [dogstatsd-ruby](https://github.com/DataDog/dogstatsd-ruby) for its reliability and Datadog integration.
+Ductwork calls `increment`, `timing`, and `time` on the client and passes tags as an array of `"key:value"` strings via a `tags:` keyword argument. That's the [dogstatsd-ruby](https://github.com/DataDog/dogstatsd-ruby) interface. Other clients work if they match it. Clients that don't take a `tags:` keyword won't work without a wrapper.
 
 ### Tagging and namespacing
 
-If your StatsD client supports tags (like DogStatsD), you can configure a namespace and default tags:
+Every metric gets a `service:ductwork` tag plus the per-metric tags listed below. If you want a prefix on the metric names or extra tags on everything, set them on the client:
 
 ```ruby
 Ductwork.statsd = -> {
@@ -64,20 +35,35 @@ Ductwork.statsd = -> {
     "localhost",
     8125,
     namespace: "ductwork",
-    tags: ["env:#{Rails.env}", "service:api"]
+    tags: ["env:#{Rails.env}"]
   )
 }
 ```
 
-This prefixes all metrics with `ductwork.` and attaches environment and service tags for filtering in your dashboards.
+That turns `pipeline.triggered` into `ductwork.pipeline.triggered` and tags everything with the environment.
 
----
+## Available metrics
 
-## Alerting suggestions
+| Metric | Type | Tags | When |
+|--------|------|------|------|
+| `pipeline.triggered` | count | `pipeline` | `.trigger` was called |
+| `pipeline.completed` | count | `pipeline` | every branch finished and the run completed |
+| `pipeline.halted` | count | `pipeline` | the run halted, for any reason |
+| `pipeline.runtime` | timing (ms) | `pipeline` | the run completed. Measured from the run's start time (trigger time plus any start delay) to completion. Not emitted for halted runs |
+| `pipeline.dampened` | count | `pipeline` | a `dampen` transition paused the run |
+| `pipeline.resumed` | count | `pipeline` | `resume!` was called on a dampened run |
+| `job.enqueued` | count | `job` | a job was created for a step |
+| `job.completed` | count | `klass`, `result` | a job execution finished, for any reason |
+| `job.runtime` | timing (ms) | `job` | wraps the step's `execute` call |
+| `thread.undead` | count | `role`, `reason` | a killed worker thread refused to die (see [Step Timeout](/docs/pro/step-timeout/#when-the-thread-wont-die)) |
 
-Consider setting alerts for:
+The `pipeline` tag is the pipeline class name. `job` and `klass` are both the step class name (yes, `job.enqueued` and `job.completed` use different tag keys for the same thing). `result` on `job.completed` is one of `success`, `failure`, `timed_out`, or `crashed`. The last one means the thread died before a result was recorded.
 
-- **High halt rate** — More than X% of pipelines halting may indicate a systemic issue
-- **Runtime degradation** — Average pipeline or job runtime exceeding historical baselines
-- **Queue backup** — `job.enqueued` significantly outpacing `job.completed` over time
-- **Timeout spikes** — Sudden increase in `pipeline.halted` correlated with timeout-related errors
+## What to watch
+
+A few alerts worth setting up:
+
+- `pipeline.halted` above zero, or above whatever baseline you're comfortable with. A halt means retries were exhausted and somebody needs to look.
+- `job.enqueued` pulling away from `job.completed` over a window. That's your workers falling behind.
+- p95 of `job.runtime` by the `job` tag creeping up. Usually an external dependency getting slow.
+- Any `thread.undead` at all.

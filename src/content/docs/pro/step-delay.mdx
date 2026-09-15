@@ -8,47 +8,53 @@ import { Aside } from '@astrojs/starlight/components';
 
 <Aside type="note">This feature requires [Ductwork Pro](https://getductwork.io/#pricing).</Aside>
 
-Ductwork Pro lets you schedule steps to execute after a specified waiting period. When a pipeline reaches a delayed step, it pauses for the configured duration before the step begins execution.
+Ductwork Pro lets you tell a step to wait before it runs. When the pipeline advances to a delayed step, its job is created with a start time in the future, and job workers leave it alone until that time passes.
 
-Delayed steps don't block worker threads while waiting. The pipeline advancer periodically checks for steps that are ready to run, making this an efficient way to handle time-based logic.
+Nothing is held open while waiting. There's no sleeping thread and no special "waiting" status. The delay is just a timestamp on the job's availability record, so a pipeline with a week-long delay in the middle costs you one row in the database and nothing else.
 
----
+## Declaring delays
 
-## Why use delays?
-
-Delays let you build time-aware workflows directly into your pipeline definitions:
-
-- **Onboarding sequences** — send a welcome email immediately, then check profile completion a day later
-- **Retry backoff** — wait before retrying a failed external service call
-- **Rate limiting** — space out API calls to stay within third-party limits
-- **Scheduled follow-ups** — remind users who haven't completed an action
-- **Cooling-off periods** — enforce waiting periods before processing sensitive operations
-
-Unlike scheduling jobs with external tools, delays keep your workflow logic in one place—inside the pipeline definition itself.
-
----
-
-## Delaring delays
-
-Add a `delay` option to any step in your pipeline definition. Values can be integers (seconds) or `ActiveSupport::Duration` objects:
+Add a `delay` option to any transition in your pipeline definition. Values can be integers (seconds) or `ActiveSupport::Duration` objects:
 
 ```ruby
 define do |pipeline|
-  pipeline.start(SendWelcomeEmail, delay: 1.hour)
-          .chain(to: CheckProfileComplete, delay: 3_600)
+  pipeline.start(SendWelcomeEmail)
+          .chain(to: CheckProfileComplete, delay: 1.day)
+          .chain(to: SendReminderEmail, delay: 3.days)
 end
 ```
 
-> ⚠️ **Validation:** Delay values must be positive. Zero or negative values raise an `ArgumentError` at definition time.
+Here `CheckProfileComplete` runs a day after `SendWelcomeEmail` finishes, and `SendReminderEmail` runs three days after that. Each delay is measured from when the previous step completed, not from when the pipeline was triggered.
 
----
+Anything other than an integer or duration raises an `ArgumentError` when the pipeline class is loaded, as does a negative value.
+
+### Delaying the first step
+
+A delay on `start` delays the whole pipeline. The first job is enqueued at trigger time with a start time in the future:
+
+```ruby
+define do |pipeline|
+  pipeline.start(SendFollowUp, delay: 2.hours)
+end
+```
+
+You can also decide this at trigger time. `trigger` accepts either a `delay` (a duration or integer) or a `delay_until` (a timestamp). Passing one overrides whatever delay is in the definition. Passing both raises an `ArgumentError`, and so does a `delay_until` in the past.
+
+```ruby
+SendFollowUpPipeline.trigger(user.id, delay: 30.minutes)
+SendFollowUpPipeline.trigger(user.id, delay_until: user.trial_ends_at)
+```
+
+## Timing precision
+
+A delay is a lower bound. Once the start time passes, the job is picked up on the next job worker poll, so the real wait is the delay plus up to one [polling interval](/docs/getting-started/configuration/#job_workerpolling_timeout). Start times are computed with the database clock, so it doesn't matter whether your app servers and workers agree on what time it is.
 
 ## Combining delays with other features
 
-**Delays + Timeouts:** A step can have both a delay and a timeout. The timeout window begins when the step starts executing, not when it becomes eligible:
+A step can have both a delay and a timeout. The [timeout](/docs/pro/step-timeout/) clock doesn't start until the step actually begins executing, so a long delay never eats into the timeout budget:
 
 ```ruby
 pipeline.chain(to: CallExternalApi, delay: 5.minutes, timeout: 30.seconds)
 ```
 
-**Delays + Conditional logic:** Delays work naturally with conditional branching—schedule different follow-up timing based on prior step outcomes.
+Delays work on every transition, not just `chain`. A delay on a fan-out like `divide` or `expand` applies to each step it creates. A delay on a fan-in like `combine` or `collapse` applies to the step that gathers the results, counting from when the last branch finished.

@@ -8,26 +8,13 @@ import { Aside } from '@astrojs/starlight/components';
 
 <Aside type="note">This feature requires [Ductwork Pro](https://getductwork.io/#pricing).</Aside>
 
-Ductwork Pro lets you enforce time limits on individual step executions. When a step exceeds its timeout, the pipeline halts automatically—preventing runaway processes from blocking your workers indefinitely.
+Ductwork Pro lets you put a time limit on individual steps. If a step runs past its limit, the worker thread executing it is killed and the job is treated the same as if it had raised: it gets retried, and if it keeps timing out the pipeline halts.
 
----
-
-## Why use timeouts?
-
-Timeouts protect your system from:
-
-- **External service hangs** — API calls that never return
-- **Infinite loops** — bugs that cause steps to run forever
-- **Resource exhaustion** — long-running steps consuming worker threads
-- **Cascading delays** — one slow step backing up your entire queue
-
-They're especially valuable in production environments where predictable execution times matter.
-
----
+This is mostly useful for steps that call out to something you don't control. An HTTP request with no read timeout, a database query that picked a bad plan, a library with a hidden infinite loop. Without a timeout, a step like that holds a worker thread forever and nothing short of a deploy gets it back.
 
 ## Declaring timeouts
 
-Add a `timeout` option to any step in your pipeline definition. Values can be integers (seconds) or `ActiveSupport::Duration` objects:
+Add a `timeout` option to any transition in your pipeline definition. Values can be integers (seconds) or `ActiveSupport::Duration` objects:
 
 ```ruby
 define do |pipeline|
@@ -36,29 +23,32 @@ define do |pipeline|
 end
 ```
 
-Both formats work identically—use whichever reads more clearly for your use case.
-
-> ⚠️ **Validation:** Timeout values must be positive. Zero or negative values raise an `ArgumentError` at definition time.
-
----
+Durations are stored as integer seconds, so `1.minute` and `60` mean the same thing. Anything other than an integer or duration raises an `ArgumentError` when the pipeline class is loaded, as does a negative value.
 
 ## What happens when a step times out
 
-When a step exceeds its timeout, Ductwork Pro triggers the following sequence:
+The clock starts when a job worker actually begins executing the step, not when the job was enqueued. A job that sits in the queue for ten minutes and then runs for five seconds has used five seconds of its budget. The deadline is evaluated against the database clock rather than the worker's clock, so an NTP correction mid-job can't stretch or shrink the window.
 
-1. **Thread termination** — The worker thread executing the step is killed immediately
-2. **Pipeline halt** — The pipeline transitions to the `halted` state
-3. **Thread restart** — A fresh worker thread is spawned to replace the terminated one
+Each job worker process has a health check that wakes up every 5 seconds and looks at each worker thread. When it finds one past its deadline:
 
-The halted pipeline can be inspected, retried, or cleaned up depending on your error-handling strategy.
+1. The worker thread is killed.
+2. The execution is recorded with a `timed_out` result. If the job has retries left (see [`job_worker.max_retry`](/docs/getting-started/configuration/#job_workermax_retry)), a new execution is scheduled 10 seconds out, same as if the step had raised. If it doesn't, the step is marked failed and the pipeline halts with a `job_retries_exhausted` reason.
+3. The dead thread's database connection is discarded and a fresh worker thread takes its place.
 
----
+Because the check runs on an interval, a step can overrun its timeout by up to 5 seconds before anything happens. Think of timeouts as a backstop, not a precise scheduler.
 
-### Monitoring timeouts
+> ⚠️ **Retries share one budget:** A timed out execution and an errored execution both consume a retry. A step that times out three times with `max_retry: 3` halts the pipeline.
 
-If you've configured [Metrics](/docs/pro/metrics/), timeouts are reflected in:
+### When the thread won't die
 
-- `pipeline.halted` — incremented when the pipeline enters the halted state
-- `job.completed` — incremented (with the `result` tag set to `killed`)
+Ruby can only kill a thread at an interrupt checkpoint. A thread wedged inside a C extension that holds the GVL and never checks for interrupts can't be killed from the outside. Ductwork waits one second for the killed thread to unwind. If it doesn't, the thread is left alone, since restarting over it would leak its database connection and let a zombie commit later. An error is logged and the `thread.undead` metric is incremented. That worker slot is gone until the process restarts. If you see this, the fix is in the step code.
 
-For more information you can check the logs for `"Pipeline halted"` line which will contain the pipeline ID. You can also see the halted pipeline in the dashboard.
+## Monitoring timeouts
+
+With [Metrics](/docs/pro/metrics/) configured, timeouts show up as:
+
+- `job.completed` with the `result:timed_out` tag, once per timed out execution
+- `pipeline.halted`, if retries were exhausted
+- `thread.undead`, if a killed thread refused to die
+
+In the logs, look for `"Job timed out"` (retrying) or `"Job exhausted retries and timed out"` (halting). Both include the job and pipeline IDs. Halted pipelines also show up in the dashboard.
