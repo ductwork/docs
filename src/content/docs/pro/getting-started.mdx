@@ -18,10 +18,10 @@ Once your account is active, you can invite team members to your organization. A
 
 Choose your billing cycle:
 
-- **Monthly** — pay as you go
-- **Yearly** — get two months free
+- **Monthly**: pay as you go
+- **Yearly**: get two months free
 
-See [Pricing](https://www.getductwork.io/#pricing) for current rates. Payment is processed securely through Stripe.
+See [Pricing](https://www.getductwork.io/#pricing) for current rates. Payments are handled by Stripe.
 
 ## 3. Provision a token
 
@@ -31,7 +31,7 @@ After checkout, you'll land on your [dashboard](https://www.getductwork.io/dashb
 
 ### Token strategies
 
-Create as many tokens as your workflow requires:
+You can create as many tokens as you need:
 
 | Strategy | Use case |
 |----------|----------|
@@ -53,7 +53,7 @@ bundle config set --global https://gems.getductwork.io <TOKEN_KEY>:<TOKEN_SECRET
 
 ### Option B: Per-project Gemfile
 
-Reference credentials directly in your Gemfile. Avoid committing secrets in plaintext—use environment variables instead:
+Reference credentials directly in your Gemfile. Don't commit secrets in plaintext. Use environment variables instead:
 
 ```ruby
 source "https://#{ENV['DUCTWORK_KEY']}:#{ENV['DUCTWORK_SECRET']}@gems.getductwork.io" do
@@ -77,4 +77,4 @@ Then install:
 bundle install
 ```
 
-You're all set!
+You're all set.

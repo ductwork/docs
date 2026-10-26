@@ -10,9 +10,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 The [`expand`](/docs/getting-started/defining-pipelines/) transition fans out over a collection, creating a new step instance for every element. For modest collections this is no problem. But when the collection holds hundreds of thousands (or millions) of elements, materializing every step in one shot becomes a problem: one enormous database transaction and unbounded memory growth, with all of that progress lost if the process goes down partway through.
 
-Ductwork Pro replaces this all-at-once expansion with **interruptible advancement**. The advancer materializes expanded steps in bounded batches, each committed in its own transaction. An uninterrupted advance works through every batch in a single pass; but because each batch is durable the moment it commits, an expansion that's interrupted partway keeps the steps it already created and resumes from there. This lets a single `expand` afford millions of steps without long transactions or memory spikes.
-
----
+Ductwork Pro replaces this all-at-once expansion with **interruptible advancement**. The advancer materializes expanded steps in bounded batches, each committed in its own transaction. An uninterrupted advance works through every batch in one pass. Since each batch is saved as soon as it commits, an expansion that gets interrupted partway keeps the steps it already created and resumes from there. A single `expand` can handle millions of steps this way without long transactions or memory spikes.
 
 ## Why interruptible advancement?
 
@@ -22,9 +20,7 @@ Naive fan-out over a very large collection runs into hard limits:
 - **Memory pressure** - building the full set of step records in memory at once can exhaust the advancer process
 - **Unsafe shutdown** - a crash, kill, or deploy arriving mid-expansion rolls back the whole transaction, discarding every step created so far
 
-Interruptible advancement removes these ceilings, making large-scale fan-out (batch enrichment, per-record processing, large backfills) a first-class pattern rather than something to work around.
-
----
+Interruptible advancement removes these limits, so large fan-outs (batch enrichment, per-record processing, large backfills) are something you can just do instead of something to work around.
 
 ## How it works
 
@@ -34,9 +30,9 @@ When a pipeline reaches an `expand` transition, the Pro advancer materializes th
 2. **Wire and commit** - each new step's input is marked as wired in that same transaction, so once a batch commits it is never recreated
 3. **Continue** - the advance moves on to the next not-yet-wired batch, repeating until the collection is exhausted
 
-A single uninterrupted advance completes the whole expansion in one pass. Splitting the work into independently committed batches is what keeps any one transaction small and bounds how many records are held in memory at once — and, because each batch is durable the moment it commits, it is also what makes an interrupted expansion recoverable (see [Safe interruption](#safe-interruption)).
+A single uninterrupted advance completes the whole expansion in one pass. Splitting the work into separately committed batches keeps each transaction small and limits how many records are held in memory at once. Since each batch is saved as soon as it commits, it also means an interrupted expansion can be recovered (see [Safe interruption](#safe-interruption)).
 
-No changes to your pipeline definition are required. The same `expand` transition you already use benefits automatically:
+You don't need to change your pipeline definition. The same `expand` transition you already use gets this automatically:
 
 ```ruby
 class EnrichAllUsersDataPipeline < Ductwork::Pipeline
@@ -49,8 +45,6 @@ end
 
 If `QueryUsersRequiringEnrichment` returns ten elements or ten million, the advancer fans out the same way; the only difference is how many batches it takes to finish.
 
----
-
 ## Safe interruption
 
 Because every batch commits independently, an expansion that's interrupted partway doesn't lose the steps it already created:
@@ -60,19 +54,15 @@ Because every batch commits independently, an expansion that's interrupted partw
 
 This makes large fan-outs safe to run across deploys and restarts. The work that committed survives the interruption, and the expansion picks up where it left off instead of starting over.
 
----
-
 ## Configuration
 
-There's nothing to configure. Interruptible advancement is always on for `expand` transitions in Ductwork Pro. The advancer manages batching internally, with no tuning required.
-
----
+There's nothing to configure. Interruptible advancement is always on for `expand` transitions in Ductwork Pro. The advancer handles batching on its own and there's nothing to tune.
 
 ## Interaction with `max_depth`
 
 Interruptible advancement governs *how* expanded steps are created; it does not change the *limit* on how many may be created. The [`pipeline_advancer.steps.max_depth`](/docs/getting-started/configuration/) ceiling still applies across the full expansion. If a collection would push a branch past `max_depth`, the pipeline is halted just as it would be without batching. The limit is evaluated against the cumulative total, not per batch.
 
-To allow truly large fan-outs, raise (or unset) `max_depth` accordingly:
+For very large fan-outs, raise or unset `max_depth`:
 
 ```yaml
 default: &default
@@ -81,12 +71,10 @@ default: &default
       max_depth: -1 # unlimited
 ```
 
----
-
 ## Monitoring
 
-If you've configured [Metrics](/docs/pro/metrics/), a runaway fan-out still surfaces:
+If you've configured [Metrics](/docs/pro/metrics/), a runaway fan-out still shows up:
 
 - `pipeline.halted` - incremented (tagged with the pipeline class) if an expansion exceeds the configured `max_depth`
 
-Note that the batched fan-out bulk-inserts its steps, so it does **not** emit the per-step `job.enqueued` metric that ordinary transitions do. Instead, each committed batch is recorded in the logs as a `Job batch enqueued` entry. For a high-cardinality `expand`, watching the step count climb in the [dashboard](/docs/getting-started/web-dashboard/) as batches commit is the clearest signal that a fan-out is progressing rather than stalled.
+Note that the batched fan-out bulk-inserts its steps, so it does **not** emit the per-step `job.enqueued` metric that ordinary transitions do. Instead, each committed batch is recorded in the logs as a `Job batch enqueued` entry. For a high-cardinality `expand`, watching the step count climb in the [dashboard](/docs/getting-started/web-dashboard/) as batches commit is the easiest way to tell that a fan-out is making progress and hasn't stalled.

@@ -15,9 +15,7 @@ Ductwork Pro provides two **lazy payload** wrappers that stream these collection
 - **`LazyOutputPayload`**: returned from an `expand` step, it streams the fan-out collection straight out of the database in batches
 - **`LazyInputPayload`**: handed to a `collapse` step, it streams the gathered sibling values back in batches
 
-Both let a single large fan-out/fan-in run with flat, bounded memory regardless of how many elements are involved.
-
----
+With both, a large fan-out/fan-in uses a bounded amount of memory no matter how many elements are involved.
 
 ## Why lazy payloads?
 
@@ -26,11 +24,9 @@ Passing a very large collection by value runs into the same ceiling on both ends
 - **Memory pressure**: an `expand` step that returns a million-element array builds that array in the job process before a single payload is written; a `collapse` step that receives a million-element array loads every value before its `execute` even begins
 - **Wasted materialization**: if the source of the collection already lives in your database (an ActiveRecord relation), loading it into Ruby objects only to re-serialize it into payloads is pure overhead
 
-Lazy payloads remove this ceiling. The `expand` side streams rows out of a relation a batch at a time, and the `collapse` side streams payloads back a batch at a time, so neither end ever holds the full collection at once.
+Lazy payloads get rid of this limit. The `expand` side streams rows out of a relation a batch at a time, and the `collapse` side streams payloads back a batch at a time, so neither end ever holds the full collection at once.
 
-<Aside type="tip">Lazy payloads pair naturally with [Interruptible Advancement](/docs/pro/interruptible-advancement/), which keeps the *materialization* of expanded steps bounded and recoverable. Lazy payloads keep the *collection itself* out of memory on the way in and out. Together they make million-element fan-outs a first-class pattern.</Aside>
-
----
+<Aside type="tip">Lazy payloads go well with [Interruptible Advancement](/docs/pro/interruptible-advancement/), which keeps the *creation* of expanded steps bounded and recoverable. Lazy payloads keep the *collection itself* out of memory on the way in and out. Together they make million-element fan-outs practical.</Aside>
 
 ## Streaming a fan-out with `LazyOutputPayload`
 
@@ -82,8 +78,6 @@ end
 - **Columns are required and must exist.** Constructing one with no columns raises `ArgumentError`; naming a column the relation doesn't have raises `LazyOutputPayload::InvalidColumnError`.
 - **Values must be JSON-serializable**, like any other payload.
 
----
-
 ## Streaming a fan-in with `LazyInputPayload`
 
 The `collapse` transition is the inverse of `expand`: it gathers every expanded sibling's output back into a single step. Because that collection can be just as large as the fan-out that produced it, a `collapse` step receives its input as a `Ductwork::Pro::LazyInputPayload` rather than a materialized array.
@@ -110,7 +104,7 @@ class ReportUserEnrichmentSuccess < Ductwork::Step
 end
 ```
 
-Because it's `Enumerable`, the usual methods (`map`, `sum`, `each_slice`, and so on) all work and all stream. Just avoid anything that forces the whole collection back into memory (`to_a`, a bare `map` whose result you keep) when the fan-in is genuinely large, since that would defeat the purpose.
+Because it's `Enumerable`, the usual methods (`map`, `sum`, `each_slice`, and so on) all work and all stream. Just avoid anything that forces the whole collection back into memory (`to_a`, a bare `map` whose result you keep) when the fan-in is actually large, since that defeats the purpose.
 
 `#count` (aliased as `#size`) is answered with a SQL `COUNT`, so you can size the fan-in without triggering a full load.
 
@@ -126,13 +120,9 @@ end
 
 <Aside type="note">A `LazyInputPayload` is handed to `collapse` steps automatically, so you don't construct it yourself. The bounded [`combine`](/docs/getting-started/defining-pipelines/) fan-in, by contrast, is statically bounded and still receives an ordinary materialized array.</Aside>
 
----
-
 ## Configuration
 
 There's nothing to configure. Both wrappers batch internally with no tuning required. Use `LazyOutputPayload` whenever your fan-out is backed by a relation; `LazyInputPayload` is delivered to every `collapse` step on its own.
-
----
 
 ## Ordering
 

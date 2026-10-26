@@ -4,13 +4,13 @@ sidebar:
   order: 50
 ---
 
-Ductwork is designed to run reliably in production environments, from traditional servers to containerized deployments. By default, bin/ductwork starts a supervisor that forks child processes: one pipeline advancer and one job worker per configured pipeline. This works well for traditional deployments but conflicts with container best practices.
+Ductwork runs in production on anything from traditional servers to containers. By default, `bin/ductwork` starts a supervisor that forks child processes: one pipeline advancer and one job worker per configured pipeline. That works well on traditional servers but goes against how containers are usually run.
 
-**The container problem**: Containers expect a single foreground process. Forking introduces complications with signal handling, logging, and process management; container orchestrators like Kubernetes work best when they can directly manage each process.
+Containers expect a single foreground process. Forking complicates signal handling, logging, and process management, and orchestrators like Kubernetes work best when they manage each process directly.
 
 ## The `role` Configuration
 
-Ductwork provides a `role` configuration that allows you to run a single process type without forking. This aligns with the container philosophy of one process per container.
+The `role` configuration lets you run a single process type without forking, so you end up with one process per container.
 
 Set the role in your YAML configuration:
 
@@ -123,11 +123,9 @@ volumes:
 
 **Resource allocation:** Assign different CPU and memory limits based on workload characteristics. Advancers are typically lightweight; workers may need more resources depending on your step logic.
 
-**Logging:** Each container's stdout is a single, coherent log stream. No interleaved output from multiple processes.
+**Logging:** Each container's stdout is one log stream, without output from several processes mixed together.
 
 **Failure isolation:** A crash in a job worker doesn't affect the advancer or other workers. The orchestrator restarts only what failed.
-
----
 
 ## Kubernetes Deployment
 
@@ -309,13 +307,13 @@ Environment=RAILS_ENV=production
 WantedBy=multi-user.target
 ```
 
-In this mode, the supervisor handles process management internally, restarting crashed children automatically.
+In this mode the supervisor manages its own child processes and restarts any that crash.
 
 ## Summary
 
 | Deployment Type | Role Config | Process Management |
 |-----------------|-------------|-------------------|
-| Traditional (VM/bare-metal) | `supervisor` (default) | systemd, upstart, etc. |
+| Traditional (VM/bare-metal) | `all` (default) | systemd, upstart, etc. |
 | Docker/Kubernetes | `advancer` or `worker` | Orchestrator handles restarts |
 
 The `role` configuration lets you choose the model that fits your infrastructure. For containers, run separate services for each role. For traditional deployments, let the supervisor manage child processes.

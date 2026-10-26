@@ -6,9 +6,9 @@ sidebar:
 
 ## TTIN
 
-Ductwork responds to the TTIN signal by dumping detailed backtraces for all child threads in the process—a powerful tool for diagnosing hung or stalled processes in production.
+Ductwork responds to the TTIN signal by dumping backtraces for all child threads in the process. This is handy for figuring out what a hung or stalled process is doing in production.
 
-When you send a TTIN signal to a Ductwork process, it immediately outputs the complete call stack for each running thread. Each backtrace is prefixed with the thread's name in the format `ductwork.<role>_<id>`, making it easy to identify which worker or advancer is doing what.
+When you send a TTIN signal to a Ductwork process, it prints the full call stack for each running thread. Each backtrace is prefixed with the thread's name in the format `ductwork.<role>_<id>`, so you can tell which worker or advancer is doing what.
 
 **Usage:**
 
@@ -37,17 +37,17 @@ ductwork.pipeline_advancer_1
 
 ## INT and TERM
 
-Ductwork handles `INT` (Interrupt) and `TERM` (Terminate) signals identically, both triggering a coordinated graceful shutdown sequence across all processes. This ensures your pipelines shut down cleanly, giving in-flight jobs a chance to complete before the process exits.
+Ductwork handles `INT` (Interrupt) and `TERM` (Terminate) signals the same way. Both start a graceful shutdown across all processes, which gives in-flight jobs a chance to finish before the process exits.
 
 ### How It Works
 
-When the supervisor receives an `INT` or `TERM` signal, it orchestrates a cascading shutdown:
+When the supervisor receives an `INT` or `TERM` signal, it shuts things down in this order:
 
-1. **Signal Forwarding** - The supervisor immediately forwards the signal to all child processes—both the pipeline advancer and job worker processes.
+1. **Signal Forwarding** - The supervisor forwards the signal to all child processes, both the pipeline advancer and the job workers.
 
 1. **Job Worker Shutdown** - Job workers attempt a graceful shutdown by waiting for all active threads to complete their current work and join the parent process. Each thread has up to `job_worker.shutdown_timeout` seconds (default: 20) to finish. Once the timeout expires, any remaining threads are killed immediately to prevent hanging.
 
-1. **Pipeline Advancer Shutdown** - The pipeline advancer attemps a graceful shutdown by waiting for all active threads to complete their current work and join the parent process. Each thread has up to `pipeline_advancer.shutdown_timeout` seconds (default: 20) to finish. Once the timeout expires, any remaining threads are killed immediately to prevent hanging.
+1. **Pipeline Advancer Shutdown** - The pipeline advancer attempts a graceful shutdown by waiting for all active threads to complete their current work and join the parent process. Each thread has up to `pipeline_advancer.shutdown_timeout` seconds (default: 20) to finish. Once the timeout expires, any remaining threads are killed immediately to prevent hanging.
 
 1. **Supervisor Shutdown** - The supervisor waits for all child processes to exit cleanly, respecting the `supervisor.shutdown_timeout` value (default: 30 seconds). If any processes are still alive after the timeout, they receive a `SIGKILL` and terminate immediately.
 
@@ -88,4 +88,4 @@ kill -INT <pid>
 kill -TERM <pid>
 ```
 
-The graceful shutdown ensures data integrity and prevents orphaned work, making it safe to deploy updates or scale down your Ductwork processes without losing in-progress pipeline work.
+A graceful shutdown keeps data consistent and avoids orphaned work, so you can deploy updates or scale down your Ductwork processes without losing in-progress pipeline work.

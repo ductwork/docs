@@ -4,7 +4,7 @@ sidebar:
   order: 20
 ---
 
-Ductwork supports two concurrency models to accommodate different runtime environments and deployment constraints.
+Ductwork supports two concurrency models to fit different Ruby runtimes and deployment setups.
 
 | Model | Configuration | Best For |
 |-------|---------------|----------|
@@ -45,7 +45,7 @@ The supervisor creates one pipeline advancer process that spawns a thread for ea
 
 ### Why Use Forking?
 
-**True concurrency on MRI/CRuby.** Threads in MRI Ruby run under the Global VM Lock (GVL), which prevents true parallel execution. Separate processes bypass this limitation, giving you real concurrency.
+**True concurrency on MRI/CRuby.** Threads in MRI Ruby run under the Global VM Lock (GVL), which prevents true parallel execution. Separate processes get around this and run in parallel.
 
 **Process isolation.** If a pipeline encounters errors or crashes, it doesn't affect other pipelines. Each job worker process operates independently.
 
@@ -82,16 +82,16 @@ bin/ductwork (supervisor)
 
 ### Why Use Threaded?
 
-**JRuby and TruffleRuby compatibility.** These runtimes don't support `fork`. The threaded model lets you run Ductwork on JVMs and alternative Ruby implementations.
+**JRuby and TruffleRuby compatibility.** These runtimes don't support `fork`. The threaded model lets you run Ductwork on the JVM and other alternative Ruby implementations.
 
 **Windows support.** Windows lacks native `fork` support. Use the threaded model when deploying to Windows environments.
 
-**Lower memory footprint.** Threads share memory with the parent process. In memory-constrained environments (small containers, edge deployments), this can be a significant advantage over forking.
+**Lower memory footprint.** Threads share memory with the parent process. In memory-constrained environments (small containers, edge deployments), this can be a big advantage over forking.
 
 **Simpler debugging.** A single process is easier to profile, trace, and attach debuggers to.
 
 ### Trade-offs
 
-On MRI/CRuby, threads don't provide true parallelism due to the GVL. CPU-bound work won't benefit from multiple threads in the same way it would from multiple processes. However, if your pipelines are I/O-bound (database queries, HTTP requests, file operations), the threaded model still provides effective concurrency.
+On MRI/CRuby, threads don't provide true parallelism due to the GVL. CPU-bound work won't benefit from multiple threads in the same way it would from multiple processes. If your pipelines are I/O-bound (database queries, HTTP requests, file operations), though, the threaded model still gets you useful concurrency.
 
 Additionally, a crash in one thread can potentially affect the entire process since there's no process-level isolation between pipelines.

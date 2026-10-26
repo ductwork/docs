@@ -4,23 +4,23 @@ title: Ductwork Documentation
 
 **Durable workflows for Ruby**
 
-Ductwork is a durable execution worflow orchestration engine and framework. You define a workflow as a series of steps; Ductwork runs them for you, on processes and threads it supervises inside your own application, and persists every step and every state transition to your relational database *before* acting on it. When a worker, a host, or the database itself goes away mid-flight, the work isn't lost. It resumes from the last committed state, automatically, with no message broker and no operator intervention.
+Ductwork is a durable execution workflow orchestration engine and framework. You define a workflow as a series of steps and Ductwork runs them on processes and threads it supervises inside your own application. Every step and state transition is saved to your relational database before Ductwork acts on it, so if a worker, a host, or the database itself goes away mid-flight, the work isn't lost. It picks back up from the last committed state on its own, without a message broker or anyone having to step in.
 
 ## What Makes Ductwork Different
 
-**It runs your workflows; it isn't just a way to describe them.** Ductwork supervises its own worker and advancer processes alongside your Rails app. You `trigger` a pipeline; Ductwork claims, executes, and advances each step. There is no separate scheduler or runtime to stand up.
+**It runs your workflows for you.** Ductwork supervises its own worker and advancer processes alongside your Rails app. You `trigger` a pipeline and Ductwork claims, executes, and advances each step. There's no separate scheduler or runtime to stand up.
 
-**Your database is the source of truth.** Work is rows, not in-memory messages or broker queues. A triggered pipeline writes durable run, branch, step, and job records. No work exists only inside a running process, so a crash can't lose it.
+**Your database is the source of truth.** Work is stored as rows in your database instead of in-memory messages or a broker queue. Triggering a pipeline writes run, branch, step, and job records. Nothing lives only inside a running process, so a crash can't lose it.
 
-**Automatic recovery from process and host failure.** Every worker heartbeats. When one stops, a reaper re-enqueues its in-flight work and a healthy worker picks it up. Fencing tokens and guarded commits ensure a recovered "zombie" process can never corrupt the work that moved on without it.
+**Automatic recovery from process and host failure.** Every worker heartbeats. When one stops, a reaper re-enqueues its in-flight work and a healthy worker picks it up. Fencing tokens and guarded commits stop a "zombie" process that comes back later from overwriting work that already moved on without it.
 
-**At-least-once execution you can reason about.** Every step is guaranteed to run; infrastructure failures (OOM, spot reclaim, deploy) never consume a step's application retry budget. Make steps idempotent (Ductwork gives you `Step#idempotency_key`) and the durability contract is simple and explicit.
+**At-least-once execution.** Every step is guaranteed to run, and infrastructure failures (OOM kills, spot reclaims, deploys) never count against a step's retry budget. Your side of the deal is making steps idempotent, and Ductwork gives you `Step#idempotency_key` to help with that.
 
-**No new infrastructure.** No Kafka, no Temporal server, no separate worker tier to operate. If you have a Rails app and a relational database, you have everything Ductwork needs.
+**No new infrastructure.** You don't need Kafka, a Temporal server, or a separate worker tier. A Rails app and a relational database are all Ductwork needs.
 
 ## An Example Workflow
 
-Each step below is a checkpoint. Ductwork persists its result before advancing, so a failure at any point resumes from there, not from the top.
+Each step below is a checkpoint. Ductwork saves a step's result before moving on, so after a failure the pipeline resumes from the last completed step instead of starting over.
 
 ```ruby
 class EnrichAllUsersDataPipeline < Ductwork::Pipeline
@@ -38,21 +38,26 @@ class EnrichAllUsersDataPipeline < Ductwork::Pipeline
   end
 end
 
-# Trigger from anywhere in your Rails app, then walk away.
-# Ductwork runs every step to completion across process and host failures.
-EnrichAllUsersDataPipeline.trigger(days_outdated: 7)
+# Trigger from anywhere in your Rails app. Ductwork runs every step to
+# completion, even if processes or hosts fail along the way.
+days_outdated = 7
+EnrichAllUsersDataPipeline.trigger(days_outdated)
 ```
 
-A step is just a class. Because Ductwork may re-run a step after a crash, the durability contract is explicit: make side effects idempotent, and return JSON-serializable values. The persisted return value *is* the hand-off to the next step.
+A step is just a class. Ductwork may re-run a step after a crash, so side effects should be idempotent and return values need to be JSON-serializable. The saved return value is what gets passed to the next step.
 
 ```ruby
 class UpdateUserData < Ductwork::Step
-  def execute(user_data)
-    # `step.idempotency_key` is stable across retries and crash re-runs,
-    # so external side effects can be made safely repeatable.
-    ExternalCrm.upsert(user_data, key: step.idempotency_key)
+  def initialize(user_data)
+    @user_data = user_data
+  end
 
-    { user_id: user_data["id"], status: "updated" }  # durable hand-off to the next step
+  def execute
+    # `step.idempotency_key` stays the same across retries and crash re-runs,
+    # so you can use it to make external side effects safe to repeat.
+    ExternalCrm.upsert(@user_data, key: step.idempotency_key)
+
+    { user_id: @user_data["id"], status: "updated" }  # saved and passed to the next step
   end
 end
 ```
@@ -66,7 +71,7 @@ end
 
 ## When to Use Ductwork
 
-Ductwork is built for workflows where *finishing* matters: work that spans multiple steps and external systems and must survive deploys and failures:
+Ductwork is built for work that spans multiple steps and external systems and has to finish even when deploys and failures get in the way:
 
 - **Multi-step integrations** - Coordinate calls across services and APIs where a partial failure must resume, not restart
 - **Data enrichment pipelines** - Fetch, transform, and enrich records from multiple sources with durable checkpoints between stages
@@ -78,6 +83,6 @@ If your "workflow" is a single background job, a plain job queue is enough. Reac
 
 ## Ready to Start?
 
-Jump into the [Installation Guide](getting-started/installation/) and run your first durable pipeline in minutes, or read [how durability works](advanced/durability/) first.
+Start with the [Installation Guide](getting-started/installation/) to get your first pipeline running, or read [how durability works](advanced/durability/) first.
 
 Have questions? [Open an issue on GitHub](https://github.com/ductwork/ductwork/issues) or upgrade to Pro for custom support.

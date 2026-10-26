@@ -30,7 +30,7 @@ mount Ductwork::Engine, at: "/admin/ductwork"
 
 The dashboard exposes details about your pipelines and the data flowing through them, so you should not leave it open to the public. We strongly recommend wrapping the mount point in some form of authentication.
 
-For example, with HTTP basic auth:
+For example, using `devise` for HTTP basic auth:
 
 ```ruby
 # config/routes.rb
@@ -39,10 +39,10 @@ authenticate :user, ->(user) { user.admin? } do
 end
 ```
 
-If you use Devise, the `authenticate` route helper shown above restricts the engine to signed-in admins. Any constraint or authentication scheme that works with a mounted engine will work here — the important thing is that the dashboard is not reachable by unauthenticated visitors.
+If you use Devise, the `authenticate` route helper shown above restricts the engine to signed-in admins. Any constraint or authentication scheme that works with a mounted engine will work here. What matters is that unauthenticated visitors can't reach the dashboard.
 
 ## Read-Only
 
 <Aside type="note">The current web dashboard is read-only.</Aside>
 
-Today the dashboard is purely for observability — there is no way to mutate real data from the UI. You cannot pause pipelines, resume pipelines, revive pipelines, or otherwise act on your data through the dashboard. It is safe to share with anyone who needs visibility into your pipelines without the risk of them changing anything.
+For now the dashboard is view-only and there's no way to change data from the UI. You can't pause, resume, or revive pipelines, or act on your data in any other way through the dashboard. That makes it safe to share with anyone who needs to see your pipelines, since they can't change anything.

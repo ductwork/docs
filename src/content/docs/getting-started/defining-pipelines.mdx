@@ -4,7 +4,7 @@ sidebar:
   order: 20
 ---
 
-A pipeline consists of steps and the transitions between them. Ductwork provides a simple DSL for defining these steps and transitions in a clear, readable way.
+A pipeline consists of steps and the transitions between them. Ductwork has a small DSL for defining them.
 
 ## Creating a Pipeline Class
 
@@ -40,7 +40,7 @@ The initializer's parameters depend on either:
 - The arguments passed when the pipeline is triggered (for the first step)
 - The return value from the previous step (for subsequent steps)
 
-This simple interface makes steps highly testable without external dependencies. Like pipelines, step class names don't require a "Step" suffix, though it may help with organization.
+Because of this, steps are easy to test on their own. Like pipelines, step class names don't require a "Step" suffix, though it may help with organization.
 
 **Example Step:**
 
@@ -61,18 +61,19 @@ class QueryUsersRequiringEnrichment < Ductwork::Step
 end
 ```
 
-**Design philosophy:** Steps represent checkpoints in your pipeline and should complete quickly. Break down long-running jobs into smaller work units by chaining steps together and passing data between them. The examples throughout this page demonstrate this approach.
+Steps are checkpoints in your pipeline and should finish quickly. Break long-running work into smaller steps that are chained together and pass data between them. The examples on this page all follow that approach.
 
 ## Understanding Transitions
 
-Transitions connect steps together. The key principle: **the return value of one step becomes the input to the next step.** This means you need to align the initializer's arity between connected steps.
+Transitions connect steps together. **The return value of one step becomes the input to the next step**, so the initializer arity of connected steps needs to line up.
 
-**Important considerations:**
+A few things to keep in mind:
+
 - Align parameter counts between connected steps
 - Use the splat operator (`*args`) if you prefer treating everything as an array
 - Return values must be JSON-serializable
 
-The Ductwork DSL uses a fluent interface pattern, enabling clean method chaining.
+The DSL is a fluent interface, so transitions can be chained one after another.
 
 ## Transition Types
 
@@ -123,7 +124,7 @@ class EnrichAllUsersDataPipeline < Ductwork::Pipeline
 end
 ```
 
-**Block syntax:** The `divide` transition accepts an optional block, yielding a branch for each step. This allows you to chain different transitions onto each branch independently:
+**Block syntax:** The `divide` transition accepts an optional block, yielding a branch for each step, so you can chain different transitions onto each branch:
 
 ```ruby
 class EnrichAllUsersDataPipeline < Ductwork::Pipeline
@@ -155,7 +156,7 @@ class EnrichAllUsersDataPipeline < Ductwork::Pipeline
 end
 ```
 
-**Block syntax:** For improved readability, you can call `combine` on any branch and pass the other branches as arguments:
+**Block syntax:** You can also call `combine` on any branch and pass the other branches as arguments, which can be easier to read:
 
 ```ruby
 class EnrichAllUsersDataPipeline < Ductwork::Pipeline
@@ -171,7 +172,7 @@ end
 
 ### `chain` - Connect Steps Sequentially
 
-The `chain` transition is the simplest transition. It connects two steps sequentially—the second step only runs if the first succeeds. There's no concurrency with chaining.
+The `chain` transition is the simplest transition. It connects two steps in sequence. The second step only runs if the first succeeds, and there's no concurrency.
 
 **Syntax:** `chain(to: StepClass)`
 
@@ -230,7 +231,7 @@ class EnrichAllUsersDataPipeline < Ductwork::Pipeline
 end
 ```
 
-**Block syntax:** Like `divide`, the `divert` transition accepts an optional block, yielding a branch for each step. This allows you to chain different transitions onto each branch independently:
+**Block syntax:** Like `divide`, the `divert` transition accepts an optional block, yielding a branch for each step, so you can chain different transitions onto each branch:
 
 ```ruby
 class EnrichAllUsersDataPipeline < Ductwork::Pipeline
@@ -267,7 +268,7 @@ class EnrichAllUsersDataPipeline < Ductwork::Pipeline
 end
 ```
 
-**Block syntax:** For improved readability, you can call `converge` on any branch and pass the other branches as arguments:
+**Block syntax:** You can also call `converge` on any branch and pass the other branches as arguments, which can be easier to read:
 
 ```ruby
 class EnrichAllUsersDataPipeline < Ductwork::Pipeline
@@ -281,7 +282,5 @@ end
 ```
 
 **Note:** Calling `converge` on a pipeline that hasn't been diverted raises a `Ductwork::DSL::DefinitionBuilder::ConvergeError`.
-
----
 
 Next, we're ready to run the `ductwork` processes.

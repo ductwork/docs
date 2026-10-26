@@ -6,9 +6,9 @@ sidebar:
 
 ## Starting the Ductwork Process
 
-If you recall, after running the Rails generator you'll have a new binstub at `bin/ductwork`. This executable launches the supervisor process, which orchestrates your entire pipeline infrastructure—forking a single pipeline advancer and a job worker for each configured pipeline. Both the pipeline advancer and job worker create multiple threads to handle concurrent work.
+If you recall, after running the Rails generator you'll have a new binstub at `bin/ductwork`. This executable starts the supervisor process, which forks a single pipeline advancer and a job worker for each configured pipeline. Both the pipeline advancer and job worker create multiple threads to handle work concurrently.
 
-The supervisor continuously monitors child processes via heartbeat checks. When a child process misses heartbeats for 5 minutes—indicating a crash or hang—the supervisor immediately spawns a replacement process to ensure minimal pipeline execution interruption.
+The supervisor watches its child processes with heartbeat checks. If a child misses heartbeats for 5 minutes, which usually means it crashed or hung, the supervisor starts a replacement right away so your pipelines keep moving.
 
 ### Basic Usage
 
@@ -25,7 +25,7 @@ bin/ductwork -c config/ductwork.yml
 bin/ductwork --config config/ductwork.0.yml
 ```
 
-**Pro tip:** Run separate Ductwork instances with different configurations to isolate high-priority pipelines or scale specific workloads independently.
+Running separate Ductwork instances with different configurations is a good way to isolate high-priority pipelines or scale specific workloads on their own.
 
 ## Triggering Pipelines from Your Code
 
@@ -67,7 +67,7 @@ end
 
 ## Monitoring Your Pipeline
 
-The returned pipeline instance gives you real-time access to pipeline state:
+You can check on the pipeline through the returned instance:
 
 ```ruby
 pipeline = EnrichAllUsersDataPipeline.trigger(7)
@@ -78,6 +78,4 @@ pipeline.steps       #=> Collection of all steps in the pipeline
 pipeline.created_at  #=> Timestamp
 ```
 
----
-
-That's it! Your pipelines are now running and processing work.
+That's it. Your pipelines are now running and processing work.

@@ -31,7 +31,7 @@ A **step** is a checkpoint within a pipeline. Steps are Ruby objects that inheri
 - `initialize` - Accepts arguments from the trigger or previous step's return value
 - `execute` - Performs the work and returns data for the next step
 
-**Key principle:** Each step's return value becomes the next step's input. Return values must be JSON-serializable.
+Each step's return value becomes the next step's input, and return values must be JSON-serializable.
 
 ## Job
 
@@ -92,7 +92,7 @@ supervisor (parent)
 
 ## Relationships
 
-Understanding how these concepts relate:
+How these fit together:
 
 1. A **pipeline** defines the workflow structure
 2. When triggered, the pipeline creates a **job** for each step

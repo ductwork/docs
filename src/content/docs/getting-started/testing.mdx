@@ -40,8 +40,6 @@ end.to have_triggered_pipelines(MyPipelineA, MyPipelineB, MyPipelineC)
 
 **Note:** This matcher does not support count expectations, as specifying counts for multiple pipelines would be ambiguous.
 
----
-
 ## Creating steps
 
 Because of Reasons, Ductwork steps are built in a non-standard way. This means you need to use the following to instantiate steps:
@@ -52,8 +50,6 @@ let(:step) { FetchUserData.build_for_execution(pipeline_id, attrs) }
 
 The first argument is the pipeline ID to which the step belongs followed by any input arguments.
 
----
-
 ## Creating pipelines
 
 To make creating pipeline objects easier you can use the `pipeline_for` helper which only takes a class name:
@@ -61,8 +57,6 @@ To make creating pipeline objects easier you can use the `pipeline_for` helper w
 ```ruby
 let(:pipeline) { pipeline_for(EnrichAllUsersDataPipeline) }
 ```
-
----
 
 ## Setting context
 
@@ -75,8 +69,6 @@ end
 ```
 
 For convenience, you can use string or symbol keys to set context state.
-
----
 
 ## Pipeline validation
 

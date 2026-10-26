@@ -4,7 +4,7 @@ sidebar:
   order: 30
 ---
 
-The supervisor is the orchestrator of your Ductwork infrastructure. As the parent process for each `bin/ductwork` instance, it launches and monitors all child processes, ensuring your pipelines continue running even when individual processes fail.
+The supervisor is the parent process for each `bin/ductwork` instance. It starts and monitors all the child processes and keeps your pipelines running when one of them fails.
 
 ## Overview
 
@@ -15,7 +15,7 @@ When you run `bin/ductwork`, you start a supervisor process that:
 - Automatically restarts failed or hung processes
 - Coordinates graceful shutdown across all processes
 
-The supervisor acts as the resilience layer, making Ductwork pipelines fault-tolerant without manual intervention.
+This is what lets pipelines recover from process failures without anyone having to step in.
 
 ## Process Hierarchy
 
@@ -45,7 +45,7 @@ supervisor (bin/ductwork)
 
 ### Process Lifecycle Management
 
-The supervisor manages the complete lifecycle of child processes:
+The supervisor manages child processes from start to finish:
 
 **Startup:**
 1. Read configuration from YAML file
@@ -73,13 +73,13 @@ The supervisor manages the complete lifecycle of child processes:
 
 ### Heartbeat Monitoring
 
-The supervisor continuously monitors child process health through periodic heartbeats. Each child process reports its status at regular intervals, confirming it's alive and processing work.
+Each child process reports a heartbeat at regular intervals to show it's alive and working, and the supervisor checks those heartbeats.
 
-**Detection:** If a child process fails to report a heartbeat within 5 minutes—indicating a crash, hang, or deadlock—the supervisor detects the failure.
+**Detection:** If a child process doesn't report a heartbeat within 5 minutes, the supervisor treats it as failed. Usually that means a crash, hang, or deadlock.
 
-**Recovery:** The supervisor immediately spawns a replacement process to restore full pipeline capacity. The new process picks up where the previous one left off, resuming work on pending jobs.
+**Recovery:** The supervisor starts a replacement process right away. The new process picks up where the old one left off and resumes work on pending jobs.
 
-**Why 5 minutes?** This timeout balances quick failure detection with tolerance for legitimately slow operations. Steps should typically complete in seconds, but this buffer accounts for temporarily degraded performance without false positives.
+**Why 5 minutes?** It's a balance between catching failures quickly and not flagging work that's just slow. Steps should usually finish in seconds, but the extra room avoids false positives when things are temporarily degraded.
 
 ## Configuration
 
@@ -117,7 +117,7 @@ default: &default
     polling_timeout: 5
 ```
 
-**Tuning:** Shorter intervals provide faster failure detection but increase CPU usage. Longer intervals reduce overhead but delay failure detection. The default (1 second) works well for most applications.
+**Tuning:** A shorter interval catches failures sooner but uses more CPU. A longer one has less overhead but is slower to notice failures. The default of 1 second works for most apps.
 
 ### `supervisor.shutdown_timeout`
 
@@ -169,7 +169,7 @@ Requests thread backtraces from all child processes for debugging hung or slow p
 kill -TTIN <supervisor_pid>
 ```
 
-The supervisor forwards this signal to all children, which dump their thread backtraces to the configured logger. This is invaluable for diagnosing performance issues or deadlocks in production.
+The supervisor forwards this signal to all children, which dump their thread backtraces to the configured logger. This is really useful for tracking down performance issues or deadlocks in production.
 
 See [TTIN Signal Handling](/docs/advanced/signal-handling/#ttin-signal-handling) for details.
 
@@ -191,7 +191,7 @@ Ductwork.on_supervisor_stop do
 end
 ```
 
-These hooks run once per supervisor lifecycle—at the very beginning of startup and the very end of shutdown. Use them for initialization, cleanup, or integration with external systems.
+Each of these hooks runs once: at the very beginning of startup and the very end of shutdown. Use them for setup, cleanup, or talking to external systems.
 
 See [Lifecycle Hooks](/docs/advanced/lifecycle-hooks/) for all available hooks.
 
@@ -326,4 +326,4 @@ spec:
         args: ["-c", "config/ductwork.yml"]
 ```
 
-The supervisor's resilient design makes it suitable for containerized environments and orchestration platforms.
+The supervisor also works in containerized environments and under orchestration platforms.

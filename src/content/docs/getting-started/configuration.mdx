@@ -60,7 +60,7 @@ default: &default
 
 ## `job_worker.max_crash`
 
-Sets the maximum number of times a step's job can be retried after a crash before marking it as an error and halting the pipeline. Unlike [`job_worker.max_retry`](#job_workermax_retry), which governs retries when a job *raises an error*, this limit governs *crashes* — out-of-memory kills, parent process crashes, other OS-level crashes, thread crashes, and hard deploys that kill threads and processes.
+Sets the maximum number of times a step's job can be retried after a crash before marking it as an error and halting the pipeline. Unlike [`job_worker.max_retry`](#job_workermax_retry), which governs retries when a job *raises an error*, this limit governs *crashes*: out-of-memory kills, parent process crashes, other OS-level crashes, thread crashes, and hard deploys that kill threads and processes.
 
 The first 3 crashes are retried immediately with no back-off. After that, a tail back-off is applied between subsequent attempts before the job, and therefore the step and pipeline, is finally failed.
 
@@ -72,7 +72,7 @@ default: &default
     max_crash: 10
 ```
 
-You can also set pipline and step-level max crash configuration. When using this syntax you can still set defaults at the library and pipeline-level with the `max_crash.default` and `max_crash.MyPipelineA.default` keys.
+You can also set pipeline and step-level max crash configuration. When using this syntax you can still set defaults at the library and pipeline-level with the `max_crash.default` and `max_crash.MyPipelineA.default` keys.
 
 ```yaml
 default: &default
@@ -97,7 +97,7 @@ default: &default
     max_retry: 3
 ```
 
-You can also set pipline and step-level max retry configuration. When using this syntax you can still set defaults at the library and pipeline-level with the `max_retry.default` and `max_retry.MyPipelineA.default` keys.
+You can also set pipeline and step-level max retry configuration. When using this syntax you can still set defaults at the library and pipeline-level with the `max_retry.default` and `max_retry.MyPipelineA.default` keys.
 
 ```yaml
 default: &default
@@ -112,7 +112,7 @@ default: &default
 
 ## `job_worker.polling_timeout`
 
-Configures the *average* time (in seconds) a job worker thread sleeps when it is idle — that is, when it queried for claimable job IDs and none were returned. This prevents excessive database queries while waiting for work.
+Configures the *average* time (in seconds) a job worker thread sleeps when it's idle, meaning it queried for claimable job IDs and got none back. This prevents excessive database queries while waiting for work.
 
 The configured value is not used verbatim. Jitter of +/- 25% is applied to each sleep, so a value of `1` results in individual sleeps between 0.75 and 1.25 seconds. This spreads out polling across threads and processes to avoid a thundering herd hammering the database in lockstep.
 
@@ -124,7 +124,7 @@ default: &default
     polling_timeout: 0.5 # seconds
 ```
 
-You can also set pipline-level polling timeout configurations. Use the `default` key to set library-level default configurations.
+You can also set pipeline-level polling timeout configurations. Use the `default` key to set library-level default configurations.
 
 ```yaml
 default: &default
@@ -148,7 +148,7 @@ default: &default
 
 ## `logger`
 
-Configures the logger instance used by Ductwork. This is the only configuration value not defined directly in the YAML file, however, see below logger configurations below for more options. Configure this in an initializer or during Rails boot. An included Rails engine sets the `logger` to `Rails.logger` ONLY if it hasn't been set yet.
+Configures the logger instance used by Ductwork. This is the only configuration value that isn't set in the YAML file, though see the logger configurations below for more options. Configure this in an initializer or during Rails boot. An included Rails engine sets the `logger` to `Rails.logger` ONLY if it hasn't been set yet.
 
 While it can be argued that an application triggering pipelines should log to its rails logger, for the ductwork process it makes sense to use its own logger. It's recommended to log to STDOUT and let your process manager handle it. Sharing the Rails logger can be convenient, but it can clutter output. It's recommended to use a separate logger.
 
@@ -171,7 +171,7 @@ default: &default
     level: 0 # Logger::DEBUG
 ```
 
-**NOTE**: This will only change the logger level for the running `bin/ductwork` process. This is by design as to avoid accidentally changing the log level for an entires Rails application.
+**NOTE**: This will only change the logger level for the running `bin/ductwork` process. This is by design as to avoid accidentally changing the log level for an entire Rails application.
 
 ## `logger.source`
 
@@ -216,11 +216,11 @@ default: &default
       MyPipelineB: 2
 ```
 
-> ⚠️ **Caution:** Over-provisioning threads can increase database load and degrade performance. Start conservative and scale based on observed metrics.
+> ⚠️ **Caution:** Too many threads can increase database load and hurt performance. Start small and scale up based on what your metrics show.
 
 ## `pipeline_advancer.polling_timeout`
 
-Configures the *average* time (in seconds) a pipeline advancer thread sleeps when it is idle — that is, when it queried for claimable pipeline IDs and none were returned. The advancer queries for pipelines whose last step is completed and advances them if found.
+Configures the *average* time (in seconds) a pipeline advancer thread sleeps when it's idle, meaning it queried for claimable pipeline IDs and got none back. The advancer queries for pipelines whose last step is completed and advances them if found.
 
 The configured value is not used verbatim. Jitter of +/- 25% is applied to each sleep, so a value of `1` results in individual sleeps between 0.75 and 1.25 seconds. This spreads out polling across threads and processes to avoid a thundering herd hammering the database in lockstep.
 
@@ -228,15 +228,15 @@ The configured value is not used verbatim. Jitter of +/- 25% is applied to each 
 
 ```yaml
 default: &default
-  pipeline:
+  pipeline_advancer:
     polling_timeout: 5 # seconds
 ```
 
-You can also set pipline-level polling timeout configuration. When using this syntax you can still set defaults at the library-level with the `default` key.
+You can also set pipeline-level polling timeout configuration. When using this syntax you can still set defaults at the library-level with the `default` key.
 
 ```yaml
 default: &default
-  pipeline:
+  pipeline_advancer:
     polling_timeout:
       default: 0.5
       MyPipelineA: 2
@@ -305,7 +305,7 @@ default: &default
 
 ## `role`
 
-The value configures the runner class that is used for the main process. The default is "all" which runs everything as normal: supervisor, pipeline advancer child process, and job worker children processes. Other valid values are "advancer" and "worker". You can also set this configuation via `DUCTWORK_ROLE` environment variable.
+The value configures the runner class that is used for the main process. The default is "all" which runs everything as normal: supervisor, pipeline advancer child process, and job worker children processes. Other valid values are "advancer" and "worker". You can also set this configuration via `DUCTWORK_ROLE` environment variable.
 
 This configuration is useful in Docker or containerized environments as this will prevent forking of children processes; it will only create children threads. Thus, you can create separate containers for the pipeline advancer and job worker(s). In this configuration, however, the heartbeat reporting becomes moot as there is no supervisor to monitor the heartbeats and subsequently restart any stuck processes.
 

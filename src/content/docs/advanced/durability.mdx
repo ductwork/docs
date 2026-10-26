@@ -12,7 +12,7 @@ entire host disappears, the database still holds a complete and consistent
 picture of what was in flight, and Ductwork is designed to recover from that
 picture automatically.
 
-This page explains the mechanisms that make that true: atomic claiming,
+This page covers how that works: atomic claiming,
 fencing (claim) tokens, heartbeats and the reaper, the database clock, the
 two-phase advancement commit, and the manual `revive!` escape hatch.
 
@@ -45,9 +45,9 @@ database:
 
 - **Row-locking (`RowLockingExecutionClaim`)**: used on PostgreSQL, MySQL /
   Trilogy, CockroachDB, and Oracle. The candidate row is selected with
-  `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1`. `SKIP LOCKED` means concurrent
-  workers transparently step over each other's locked rows instead of
-  contending or blocking, so throughput scales with worker count.
+  `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1`. With `SKIP LOCKED`, concurrent
+  workers skip over each other's locked rows instead of waiting on them, so
+  throughput scales with worker count.
 - **Optimistic locking (`OptimisticLockingExecutionClaim`)**: the fallback for
   databases without `SKIP LOCKED` (e.g. SQLite). A candidate id is read, then
   claimed with a conditional write:
@@ -59,8 +59,8 @@ database:
   ```
 
   The claim succeeds only if exactly one row was updated. If another worker won
-  the race, zero rows update and the worker simply loops: no error, no double
-  execution.
+  the race, zero rows update and the worker just tries again. There's no error
+  and the job doesn't run twice.
 
 In both strategies the winning worker stamps its `process_id` onto both the
 `availability` and the `execution` row. That `process_id` is the basis for the
@@ -91,11 +91,11 @@ two-phase advancement records (see [below](#two-phase-advancement-commit)).
 
 ## Claim (fencing) tokens
 
-Atomic claiming alone is not enough. Consider: an advancer claims a branch,
-stalls (GC pause, host freeze, network partition to the DB), is declared dead
-by the reaper, the branch is released, a *second* advancer claims it and starts
-working, and then the first advancer wakes up and tries to finish its now-stale
-work. This is the classic distributed-systems "zombie writer" problem.
+Atomic claiming on its own isn't enough. Say an advancer claims a branch and
+then stalls (GC pause, host freeze, network partition to the DB). The reaper
+declares it dead and releases the branch, and a *second* advancer claims it and
+starts working. Then the first advancer wakes up and tries to finish its
+now-stale work. This is the classic distributed-systems "zombie writer" problem.
 
 Ductwork solves it with **fencing tokens**, called *claim tokens* in the code.
 Every successful branch claim writes a new random `claim_token`. The advancer
@@ -112,7 +112,7 @@ end
 lock and compares it to the token the advancer is holding. If they differ (i.e.
 the branch was reaped and re-claimed by someone else) it raises
 `Ductwork::Branch::StaleClaimError` and the transaction rolls back. The stale
-advancer's work is discarded harmlessly; the new owner is unaffected.
+advancer's work is thrown away and the new owner isn't affected.
 
 When an advancer finishes (or aborts) cleanly it calls `release!`, which is
 itself token-guarded:
@@ -152,17 +152,17 @@ potentially many hosts. If each Ruby process used its own wall clock, NTP drift
 could make healthy work look stale (premature reaping) or stale work look
 healthy (work that never recovers).
 
-`Ductwork::DatabaseClock` sidesteps this entirely by emitting SQL that resolves
+`Ductwork::DatabaseClock` avoids this by emitting SQL that resolves
 "now" against the **database server's** clock: `clock_timestamp()` on Postgres,
 `CURRENT_TIMESTAMP(6)` on MySQL, `julianday('now')` on SQLite, and the
 equivalent on CockroachDB and Oracle. Every staleness predicate (reaper sweeps,
 branch/job candidate selection, health checks) is expressed as a `DatabaseClock`
-fragment, so the entire deployment shares a single authoritative clock
-regardless of host time skew.
+fragment, so every host uses the same clock no matter how far apart their own
+clocks drift.
 
 ## The reaper
 
-The reaper is what turns "a process died" into "its work runs again." Reaping
+The reaper is what gets a dead process's work running again. Reaping
 runs on every supervisor tick (`Ductwork::Process.reap_all!`) and also targets
 specific PIDs when the process supervisor notices a dead forked child.
 
@@ -250,7 +250,7 @@ separate counters:
 | Cause | The step raised an exception | The owning process died (reaped) |
 | Counted against | `job_worker.max_retry` | Not capped; a crash is not the job's fault |
 | Backoff | New execution scheduled `FAILED_EXECUTION_TIMEOUT` (10s) out | Re-enqueued immediately |
-| Terminal result | Step marked `failed` → branch halts | Always retried |
+| Terminal result | Step marked `failed` and the branch halts | Always retried |
 
 This separation means an infrastructure failure (deploy, OOM, spot-instance
 reclaim) never consumes a step's application-level retry budget.
@@ -320,7 +320,8 @@ The execution row stays open with the dead `process_id`. Within `REAP_THRESHOLD`
 a surviving supervisor's reaper calls `crashed!`, records a `process_crashed`
 result, and enqueues a fresh execution with `crash_count + 1`. Another worker
 claims it. If the original host briefly comes back and tries to commit, the
-guarded `UPDATE` matches zero rows → `CommitFailed`, result discarded.
+guarded `UPDATE` matches zero rows, `CommitFailed` is raised, and the result is
+discarded.
 
 **An advancer freezes after claiming a branch, then resumes.**
 The reaper abandons its open advancement (`Ductwork::ProcessCrash`) and

@@ -6,20 +6,16 @@ sidebar:
 
 Ductwork provides a key-value store that persists across all steps in a pipeline. Unlike return values, which flow from one step to the next, global context is accessible from any step at any point in the pipeline's execution.
 
----
-
 ## Why use global context?
 
 Return value passing works well for linear data flow, but some information needs to be available everywhere:
 
-- **User or request identifiers** — set once at the start, referenced throughout
-- **Configuration fetched early** — lookup results needed by multiple downstream steps
-- **Sidecar data** — necessary values that don't quite make sense as data flow
-- **Cross-cutting concerns** — tracing IDs, feature flags, or tenant context
+- **User or request identifiers**: set once at the start and used throughout
+- **Configuration fetched early**: lookup results that several later steps need
+- **Sidecar data**: values you need that don't really fit as data flow
+- **Cross-cutting concerns**: tracing IDs, feature flags, or tenant context
 
-Global context keeps this data accessible without threading it through every step's return value.
-
----
+Global context lets you get at this data without passing it through every step's return value.
 
 ## Basic usage
 
@@ -35,22 +31,20 @@ context.get("user_id")  #=> 123
 
 Values can be any JSON serializable Ruby object: strings, numbers, hashes, or arrays.
 
----
-
 ## Write-once by default
 
-To encourage disciplined use of shared state, context keys are **write-once by default**. Attempting to overwrite an existing key raises an error:
+To keep shared state under control, context keys are **write-once by default**. Trying to overwrite an existing key raises an error:
 
 ```ruby
 context.set("user_id", 1)
 context.set("user_id", 2)  #=> raises Ductwork::Context::OverwriteError
 ```
 
-This prevents accidental overwrites and makes it easier to reason about where values come from.
+This prevents accidental overwrites and makes it easier to tell where a value came from.
 
 ### Explicit overwrites
 
-When you genuinely need to update a value, pass `overwrite: true`:
+When you really do need to update a value, pass `overwrite: true`:
 
 ```ruby
 context.set("user_id", 1)
@@ -58,15 +52,13 @@ context.set("user_id", 2, overwrite: true)  # succeeds
 context.get("user_id")  #=> 2
 ```
 
-Use this sparingly. If you find yourself overwriting frequently, consider whether the data model fits better as step return values or a dedicated accumulator pattern.
-
----
+Use this sparingly. If you find yourself overwriting a lot, consider whether the data would fit better as step return values or in a dedicated accumulator.
 
 ## Atomicity and concurrency
 
-Reads and writes to global context are **atomic** ie. each operation completes fully before another can begin. This prevents torn reads or partial writes.
+Reads and writes to global context are **atomic**, meaning each operation finishes before another can start. You won't get torn reads or partial writes.
 
-However, atomicity doesn't make concurrent access safe in all cases:
+That doesn't make concurrent access safe in every case, though:
 
 ```ruby
 # Step A and Step B run concurrently
@@ -83,11 +75,9 @@ context.set("status", "validating", overwrite: true)
 
 > ⚠️ **Caution:** Avoid writing to the same key from concurrent steps. Even with atomic operations, the final value depends on execution order. If concurrent steps need to share state, use separate keys or coordinate through step dependencies.
 
----
-
 ## Example: pipeline-wide tracing
 
-A common pattern is setting a trace ID at the start of a pipeline for observability:
+A common pattern is setting a trace ID at the start of a pipeline so every step can log it:
 
 ```ruby
 class InitializeTracing < Ductwork::Step
